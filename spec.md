@@ -1,56 +1,56 @@
-# PROMPT: Creación de Asistente de Llamadas en Tiempo Real (Copiloto IA) para macOS
+# PROMPT: Real-Time Call Assistant (AI Copilot) for macOS
 
-Necesito desarrollar un software de escritorio para macOS que intercepte el audio de salida del sistema en tiempo real durante una llamada, lo transcriba, detecte cuando la otra persona hace una pregunta y use la API de Gemini para generar respuestas rápidas y concisas en una interfaz flotante.
-
----
-
-### Pila Tecnológica Requerida
-- **Sistema Operativo:** macOS (Debe soportar redirección de audio de salida).
-- **Lenguaje Principal:** Python 3.10+
-- **Captura de Audio:** Librería `soundcard` o `pyaudio` configurada para capturar desde el dispositivo virtual de audio (e.g., BlackHole).
-- **Transcripción (STT):** `faster-whisper` (local) o `google-cloud-speech` / WebSocket de transcripción en tiempo real con baja latencia.
-- **Motor de Inteligencia Artificial:** API de Google Gemini (`google-genai` SDK) usando el modelo `gemini-2.5-flash` para respuestas con ultra-baja latencia.
-- **Interfaz Gráfica (GUI):** `PyQt6` o `PySide6` con soporte para ventana flotante "*Always on Top*" y fondo transparente/elegante.
+Build a desktop software application for macOS that intercepts system output audio in real time during a call, transcribes it, detects when the caller asks a question, and uses the Google Gemini API to generate fast, concise answers in a floating window.
 
 ---
 
-### Arquitectura del Proyecto y Flujo de Datos
-
-1. **Módulo de Audio (`audio_capture.py`):**
-   - Escuchar continuamente el stream de entrada del dispositivo de audio configurado en el sistema (por ejemplo, BlackHole 2ch).
-   - Mantener un búfer de audio continuo de bajo retardo.
-
-2. **Módulo de Transcripción (`transcriber.py`):**
-   - Procesar los bloques de audio del búfer y convertirlos a texto en tiempo real.
-   - Detectar pauses/silencios para determinar cuándo se completó una frase o pregunta.
-
-3. **Módulo de IA con Gemini (`ai_assistant.py`):**
-   - Recibir el texto transcrito.
-   - Utilizar la API de Gemini para evaluar si el texto corresponde a una pregunta o solicitud.
-   - Configurar el prompt del sistema (*System Instruction*) para Gemini:
-     > *"Eres un copiloto de entrevistas y llamadas en tiempo real. Tu trabajo es dar respuestas directas, profesionales, breves y formateadas en viñetas (bullet points) para que el usuario pueda leerlas de un vistazo rápido durante la llamada. Evita introducciones innecesarias."*
-   - Retornar la respuesta generada por Gemini a la interfaz gráfica.
-
-4. **Interfaz Gráfica (`gui.py`):**
-   - Ventana flotante pequeña, estilizada en modo oscuro o translúcida.
-   - Mantiene la propiedad `Qt.WindowStaysOnTopHint`.
-   - Muestra dos secciones principales:
-     1. **Transcripción en vivo** (Lo que el interlocutor está diciendo).
-     2. **Sugerencias de Gemini** (Puntos clave de respuesta).
-   - Incluye un botón para limpiar el historial y un indicador visual de nivel de audio/micrófono.
+### Required Tech Stack
+- **Operating System:** macOS (Must support output audio redirection).
+- **Primary Language:** Python 3.10+
+- **Audio Capture:** `soundcard` or `sounddevice` / `pyaudio` library configured to capture from virtual audio device (e.g., BlackHole).
+- **Transcription (STT):** `faster-whisper` (local) or `google-cloud-speech` / real-time low-latency WebSocket transcription.
+- **AI Engine:** Google Gemini API (`google-genai` SDK) using `gemini-2.5-flash` model for ultra-low latency responses.
+- **Graphical Interface (GUI):** `PyQt6` or `PySide6` supporting "*Always on Top*" floating window and sleek dark mode style.
 
 ---
 
-### Instrucciones de Estructura de Código
+### Project Architecture & Data Flow
 
-Por favor, genera la estructura completa del proyecto con los siguientes archivos:
-1. `requirements.txt` (Con todas las librerías necesarias).
-2. `README.md` (Instrucciones paso a paso para instalar BlackHole en macOS y configurar el audio multisalida en la app 'Configuración de Audio MIDI').
-3. `config.py` (Manejo de variables de entorno como `GEMINI_API_KEY` y parámetros de audio).
+1. **Audio Module (`audio_capture.py`):**
+   - Continuously listen to input stream from configured system audio device (e.g., BlackHole 2ch).
+   - Maintain a low-latency continuous audio buffer.
+
+2. **Transcription Module (`transcriber.py`):**
+   - Process audio buffer blocks and convert them to text in real time.
+   - Detect pauses/silence to determine when a complete sentence or question was finished.
+
+3. **AI Assistant Module with Gemini (`ai_assistant.py`):**
+   - Receive transcribed text.
+   - Use Gemini API to evaluate if text corresponds to a question or prompt.
+   - Configure Gemini System Instruction prompt:
+     > *"You are a real-time interview and call copilot. Your job is to provide direct, professional, brief, and bullet-pointed answers so the user can skim them at a quick glance during the call. Avoid unnecessary introductions."*
+   - Return generated Gemini response to the graphical interface.
+
+4. **Graphical Interface (`gui.py`):**
+   - Compact floating window, styled in sleek dark mode.
+   - Retains `Qt.WindowStaysOnTopHint` property.
+   - Displays two main sections:
+     1. **Live Transcription** (What the caller is saying).
+     2. **Gemini Suggestions** (Key bullet-point responses).
+   - Includes a clear history button and visual audio level indicator.
+
+---
+
+### Code Structure Instructions
+
+Generate the complete project structure with the following files:
+1. `requirements.txt` (With all necessary libraries).
+2. `README.md` (Step-by-step instructions to install BlackHole on macOS and configure Multi-Output device in 'Audio MIDI Setup').
+3. `config.py` (Environment variables handling like `GEMINI_API_KEY` and audio parameters).
 4. `src/audio_capture.py`
 5. `src/transcriber.py`
 6. `src/ai_assistant.py`
 7. `src/gui.py`
-8. `main.py` (Punto de entrada de la aplicación).
+8. `main.py` (Application entrypoint).
 
-Asegúrate de incluir manejo de errores adecuado para dispositivos de audio no encontrados y claves de API faltantes.
+Ensure proper error handling for missing audio devices and missing API keys.
