@@ -4,10 +4,12 @@ Initializes QApplication, builds main window, and orchestrates worker threads
 for audio capture, Speech-To-Text (STT) transcription, and AI Copilot (Gemini).
 """
 
+import os
 import sys
 import logging
 import signal
 from PySide6.QtCore import QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from config import config
@@ -34,6 +36,11 @@ def main():
     app.setApplicationName("Sound Catcher")
     app.setOrganizationName("SoundCatcher")
 
+    # Set Application Icon
+    icon_path = os.path.join(os.path.dirname(__file__), "assets", "icon.png")
+    if os.path.exists(icon_path):
+        app.setWindowIcon(QIcon(icon_path))
+
     # Allow SIGINT (Ctrl+C) graceful exit
     timer = QTimer()
     timer.start(500)
@@ -42,6 +49,9 @@ def main():
 
     # 2. Initialize Main Window (GUI)
     window = MainWindow()
+    if os.path.exists(icon_path):
+        window.setWindowIcon(QIcon(icon_path))
+
 
     # 3. Initialize Worker Threads
     audio_worker = AudioCaptureWorker()
