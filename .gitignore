@@ -1,0 +1,33 @@
+# Environment variables (contains private GEMINI_API_KEY)
+.env
+.env.local
+*.env
+
+# Python virtual environment
+venv/
+.venv/
+env/
+
+# Python cache & compiled files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Downloaded models or audio temp files
+*.bin
+*.pt
+*.onnx
+*.wav
