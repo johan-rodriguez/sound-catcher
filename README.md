@@ -2,7 +2,12 @@
 
 **Sound Catcher** is an intelligent desktop assistant built with Python and PySide6 for macOS. It intercepts system output audio in real time during voice calls or video conferences (Zoom, Google Meet, Microsoft Teams, Slack, etc.), automatically transcribes the caller's speech, detects when they ask a question, and leverages the **Google Gemini API** (`gemini-2.5-flash`) to present clear, professional bullet-pointed answers in an **Always on Top** floating window.
 
+<p align="center">
+  <img src="assets/screenshot.png" alt="Sound Catcher App Screenshot" width="550" />
+</p>
+
 ---
+
 
 ## 📋 System Requirements
 
