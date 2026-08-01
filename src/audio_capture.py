@@ -5,6 +5,7 @@ Uses sounddevice and numpy to continuously listen to system output/input audio s
 
 import logging
 import time
+import socket
 from typing import List, Tuple, Optional
 import numpy as np
 import sounddevice as sd
@@ -33,13 +34,16 @@ class AudioCaptureWorker(QThread):
         self._is_running = False
         self._stream: Optional[sd.InputStream] = None
 
+    NETWORK_DEVICE_ID: int = -99
+    UDP_PORT: int = 50005
+
     @staticmethod
     def get_available_input_devices() -> List[Tuple[int, str]]:
         """
-        Returns a list of available input audio devices.
+        Returns a list of available input audio devices including Network Stream option.
         Format: [(device_index, device_name), ...]
         """
-        devices = []
+        devices = [(AudioCaptureWorker.NETWORK_DEVICE_ID, "🌐 Network Stream (UDP Port 50005)")]
         try:
             device_list = sd.query_devices()
             for idx, dev in enumerate(device_list):
@@ -52,14 +56,25 @@ class AudioCaptureWorker(QThread):
         return devices
 
     @staticmethod
-    def find_default_device_id(keyword: str = "BlackHole") -> Optional[int]:
+    def find_default_device_id(keywords: Optional[Tuple[str, ...]] = None) -> Optional[int]:
         """
-        Searches for the device ID matching the specified keyword (e.g., BlackHole).
+        Searches for the device ID matching specified keywords (e.g., BlackHole on macOS, CABLE Output on Windows).
         """
+        if keywords is None:
+            keywords = config.default_device_keywords
+
         devices = AudioCaptureWorker.get_available_input_devices()
+        # First check explicit keyword if set via env
+        env_keyword = config.default_device_keyword.lower()
         for idx, name in devices:
-            if keyword.lower() in name.lower():
+            if env_keyword in name.lower():
                 return idx
+
+        # Then check cross-platform fallback keywords
+        for kw in keywords:
+            for idx, name in devices:
+                if kw.lower() in name.lower():
+                    return idx
         return None
 
     def set_device(self, device_id: Optional[int]) -> None:
@@ -106,13 +121,51 @@ class AudioCaptureWorker(QThread):
         # Emit audio chunk for transcriber module
         self.audio_chunk_ready.emit(samples)
 
+    def _run_network_stream(self) -> None:
+        """UDP Socket listener for remote audio streaming (e.g. from macOS sender)."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(1.0)
+        try:
+            sock.bind(("0.0.0.0", self.UDP_PORT))
+            msg = f"Listening for Network Stream on UDP Port {self.UDP_PORT}"
+            logger.info(msg)
+            self.status_changed.emit(msg)
+
+            while self._is_running:
+                try:
+                    data, addr = sock.recvfrom(65536)
+                    if not data or not self._is_running:
+                        continue
+                    samples = np.frombuffer(data, dtype=np.float32)
+                    if len(samples) > 0:
+                        rms = float(np.sqrt(np.mean(np.square(samples))))
+                        normalized_level = min(1.0, rms * 10.0)
+                        self.audio_level_changed.emit(normalized_level)
+                        self.audio_chunk_ready.emit(samples)
+                except socket.timeout:
+                    continue
+                except Exception as e:
+                    logger.error(f"UDP Audio Recv Error: {e}")
+
+        except Exception as e:
+            error_msg = f"Error binding UDP port {self.UDP_PORT}: {e}"
+            logger.error(error_msg)
+            self.error_occurred.emit(error_msg)
+        finally:
+            sock.close()
+
     def run(self) -> None:
         """Main thread execution method."""
         self._is_running = True
 
-        # If device_id not specified, search for BlackHole or fallback
+        # Handle Network Audio Stream mode
+        if self.device_id == self.NETWORK_DEVICE_ID:
+            self._run_network_stream()
+            return
+
+        # If device_id not specified, search for virtual audio device (BlackHole, VB-Cable, etc.)
         if self.device_id is None:
-            self.device_id = self.find_default_device_id(config.default_device_keyword)
+            self.device_id = self.find_default_device_id()
 
         device_name = "Default"
         if self.device_id is not None:

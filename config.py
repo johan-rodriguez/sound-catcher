@@ -38,6 +38,13 @@ class AppConfig:
     sample_rate: int = 16000  # 16 kHz optimal for STT
     channels: int = 1  # Mono
     chunk_duration_sec: float = 0.5  # Audio chunk capture size in seconds
+    default_device_keywords: tuple = (
+        "BlackHole",
+        "CABLE Output",
+        "VB-Audio",
+        "Stereo Mix",
+        "Virtual Cable",
+    )
     default_device_keyword: str = os.getenv("AUDIO_DEVICE_KEYWORD", "BlackHole")
 
     # Voice Activity Detection (VAD) & Silence Thresholds

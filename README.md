@@ -1,6 +1,6 @@
-# 🎙️ Sound Catcher - Real-Time Call Copilot for macOS
+# 🎙️ Sound Catcher - Real-Time Call Copilot for macOS & Windows
 
-**Sound Catcher** is an intelligent desktop assistant built with Python and PySide6 for macOS. It intercepts system output audio in real time during voice calls or video conferences (Zoom, Google Meet, Microsoft Teams, Slack, etc.), automatically transcribes the caller's speech, detects when they ask a question, and leverages the **Google Gemini API** (`gemini-2.5-flash`) to present clear, professional bullet-pointed answers in an **Always on Top** floating window.
+**Sound Catcher** is an intelligent desktop assistant built with Python and PySide6 for **macOS** and **Windows**. It intercepts system output audio in real time during voice calls or video conferences (Zoom, Google Meet, Microsoft Teams, Slack, etc.), automatically transcribes the caller's speech, detects when they ask a question, and leverages the **Google Gemini API** (`gemini-2.5-flash`) to present clear, professional bullet-pointed answers in an **Always on Top** floating window.
 
 <p align="center">
   <img src="assets/screenshot.png" alt="Sound Catcher App Screenshot" width="550" />
@@ -8,40 +8,47 @@
 
 ---
 
-
 ## 📋 System Requirements
 
-- **Operating System:** macOS 12+ (Monterey, Ventura, Sonoma, Sequoia or newer).
+- **Operating System:** macOS 12+ or Windows 10 / 11 (64-bit).
 - **Python:** version 3.10 or higher.
-- **Package Manager:** Homebrew (`brew`).
-- **Virtual Audio Device:** BlackHole 2ch (to capture system output audio from callers).
+- **Virtual Audio Device:**
+  - **macOS:** BlackHole 2ch (to loop back caller system audio).
+  - **Windows:** VB-Audio Virtual Cable (`VB-Cable`) or Stereo Mix.
 - **Google Gemini API Key:** Obtainable at [Google AI Studio](https://aistudio.google.com/).
 
 ---
 
-## 🎧 Step 1: Audio Setup on macOS
+## 🎧 Step 1: Audio Setup
 
-For the application to "listen" to the caller's voice without muting your own speakers or headphones, you must configure a **Multi-Output Device** in macOS using **BlackHole**.
+### macOS Setup (BlackHole 2ch)
 
-### 1.1 Install BlackHole 2ch via Homebrew
+1. **Install BlackHole 2ch via Homebrew:**
+   ```bash
+   brew install blackhole-2ch
+   ```
+2. **Configure Multi-Output Device:**
+   - Open **Audio MIDI Setup** (`open -a "Audio MIDI Setup"`).
+   - Click **`+`** -> **"Create Multi-Output Device"**.
+   - Check both your Headphones/Speakers and **BlackHole 2ch**.
+   - Set **System Sound Output** to **Multi-Output Device**.
 
-Open your Terminal and run:
+### Windows Setup (VB-Audio Virtual Cable)
 
-```bash
-brew install blackhole-2ch
-```
+1. **Download & Install VB-CABLE:**
+   - Download the free **VB-CABLE Driver** from [vb-audio.com/Cable](https://vb-audio.com/Cable/).
+   - Extract the ZIP and right-click `VBCABLE_Setup_x64.exe` -> **Run as Administrator**. Restart your PC if prompted.
+2. **Configure Windows Audio Routing:**
+   - Open **Settings** -> **System** -> **Sound** -> **Control Panel / Sound Control Panel**.
+   - In the **Playback** tab, right-click **CABLE Input** -> select **Properties** -> **Listen** tab -> check **"Listen to this device"** and set playback through your primary headphones/speakers.
+   - Alternatively, set **CABLE Input** as your default output, or route your conference app (Zoom/Teams) speaker output to **CABLE Input**.
+### Remote Cross-Platform Setup (Mac Call -> Windows App)
 
-### 1.2 Configure Multi-Output Device in Audio MIDI Setup
+If you hold your calls on your **macOS laptop** but want to run **Sound Catcher** on a **Windows laptop**:
+1. Run `python3 mac_audio_sender.py --ip <WINDOWS_IP>` on your Mac.
+2. Select **`🌐 Network Stream (UDP Port 50005)`** in Sound Catcher on Windows.
 
-1. Open the system app **Audio MIDI Setup** (search in Spotlight or run in Terminal: `open -a "Audio MIDI Setup"`).
-2. Click the **`+`** icon at the bottom-left corner and select **"Create Multi-Output Device"**.
-3. In the right panel, check the boxes for:
-   - Your primary listening device (e.g., *Built-in Speakers*, *Headphones*, or *AirPods*).
-   - **BlackHole 2ch**.
-4. Ensure your primary listening device is set as the **Master Device** to retain volume control.
-5. Open macOS **System Settings** -> **Sound** -> **Output** and select your newly created **Multi-Output Device** as the default system output.
-
-Now, any audio played during a call will be routed to your headphones/speakers **and** sent simultaneously to BlackHole 2ch for **Sound Catcher** to transcribe.
+👉 **See the complete step-by-step tutorial in [REMOTE_STREAMING_GUIDE.md](file:///Users/johan/Development/sound-catcher/REMOTE_STREAMING_GUIDE.md)**
 
 ---
 
@@ -50,15 +57,21 @@ Now, any audio played during a call will be routed to your headphones/speakers *
 ### 2.1 Navigate to Project Directory
 
 ```bash
-cd /Users/johan/Development/sound-catcher
+cd sound-catcher
 ```
 
 ### 2.2 Create & Activate Python Virtual Environment
 
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
+- **macOS / Linux:**
+  ```bash
+  python3 -m venv venv
+  source venv/bin/activate
+  ```
+- **Windows (Command Prompt / PowerShell):**
+  ```cmd
+  python -m venv venv
+  venv\Scripts\activate
+  ```
 
 ### 2.3 Install Dependencies
 
