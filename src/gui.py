@@ -132,6 +132,10 @@ QTextEdit, QTextBrowser {
     selection-background-color: #00458E;
 }
 
+QTextBrowser#suggestionsArea {
+    font-size: 15px;
+}
+
 QSplitter::handle {
     background-color: #2B2C3D;
     height: 2px;
@@ -291,14 +295,17 @@ class MainWindow(QMainWindow):
         suggestions_layout.addLayout(s_header_layout)
 
         self.suggestions_area = QTextBrowser()
+        self.suggestions_area.setObjectName("suggestionsArea")
         self.suggestions_area.setOpenExternalLinks(True)
         self.suggestions_area.setPlaceholderText("Automatic AI response bullet points will appear here...")
         suggestions_layout.addWidget(self.suggestions_area)
 
         splitter.addWidget(suggestions_card)
 
-        # Initial splitter ratio (40% transcript, 60% suggestions)
-        splitter.setSizes([220, 330])
+        # Initial splitter ratio (25% transcript, 75% suggestions)
+        splitter.setSizes([140, 410])
+        splitter.setStretchFactor(0, 1)
+        splitter.setStretchFactor(1, 3)
         main_layout.addWidget(splitter, stretch=1)
 
         # 3. Bottom Status Bar
@@ -361,11 +368,11 @@ class MainWindow(QMainWindow):
 
         formatted = (
             f"<div style='background-color: #1E2030; border-left: 4px solid #4C8EFF; "
-            f"border-radius: 6px; padding: 10px; margin-bottom: 12px;'>"
-            f"<div style='color: #82A5FF; font-size: 11px; font-weight: bold;'>[{now}] 💡 DETECTED QUESTION:</div>"
-            f"<div style='color: #E0E2EC; font-style: italic; margin-bottom: 8px;'>\"{question}\"</div>"
+            f"border-radius: 6px; padding: 10px; margin-bottom: 12px; font-size: 15px; line-height: 1.45;'>"
+            f"<div style='color: #82A5FF; font-size: 12px; font-weight: bold;'>[{now}] 💡 DETECTED QUESTION:</div>"
+            f"<div style='color: #E0E2EC; font-style: italic; font-size: 14px; margin-bottom: 8px;'>\"{question}\"</div>"
             f"<hr style='border: 0; border-top: 1px solid #2B2C3D; margin: 6px 0;'>"
-            f"<div style='color: #F0F2FC;'>{html_body}</div>"
+            f"<div style='color: #F0F2FC; font-size: 15px;'>{html_body}</div>"
             f"</div>"
         )
 
@@ -455,13 +462,13 @@ class MainWindow(QMainWindow):
                     html_lines.append("<ul style='margin-top: 4px; margin-bottom: 4px; padding-left: 18px;'>")
                     in_list = True
                 content = stripped[2:]
-                html_lines.append(f"<li style='margin-bottom: 3px;'>{content}</li>")
+                html_lines.append(f"<li style='margin-bottom: 4px; font-size: 15px;'>{content}</li>")
             else:
                 if in_list:
                     html_lines.append("</ul>")
                     in_list = False
                 if stripped:
-                    html_lines.append(f"<p style='margin: 4px 0;'>{stripped}</p>")
+                    html_lines.append(f"<p style='margin: 4px 0; font-size: 15px;'>{stripped}</p>")
 
         if in_list:
             html_lines.append("</ul>")
