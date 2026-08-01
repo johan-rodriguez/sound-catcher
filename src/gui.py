@@ -321,6 +321,9 @@ class MainWindow(QMainWindow):
 
         if devices:
             self.device_combo.setCurrentIndex(selected_idx)
+            dev_id = self.device_combo.itemData(selected_idx)
+            if dev_id is not None:
+                self.device_selected.emit(dev_id)
 
         self.device_combo.blockSignals(False)
 

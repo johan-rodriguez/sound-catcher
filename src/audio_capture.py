@@ -85,7 +85,9 @@ class AudioCaptureWorker(QThread):
             for idx, name in devices:
                 if kw.lower() in name.lower():
                     return idx
-        return None
+
+        # Default fallback to Network Stream (-99)
+        return AudioCaptureWorker.NETWORK_DEVICE_ID
 
     def set_device(self, device_id: Optional[int]) -> None:
         """Switches the audio capture device and restarts stream if running."""
