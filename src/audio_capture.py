@@ -45,8 +45,16 @@ class AudioCaptureWorker(QThread):
         """
         devices = [(AudioCaptureWorker.NETWORK_DEVICE_ID, "🌐 Network Stream (UDP Port 50005)")]
         try:
+            hostapis = sd.query_hostapis()
             device_list = sd.query_devices()
             for idx, dev in enumerate(device_list):
+                # Skip raw WDM-KS devices as they often fail with PaErrorCode -9996
+                hostapi_idx = dev.get("hostapi", -1)
+                if 0 <= hostapi_idx < len(hostapis):
+                    hostapi_name = hostapis[hostapi_idx].get("name", "")
+                    if "WDM-KS" in hostapi_name or "WDMKS" in hostapi_name:
+                        continue
+
                 # Filter devices that support input channels
                 if dev.get("max_input_channels", 0) > 0:
                     name = dev.get("name", f"Device {idx}")
@@ -206,14 +214,31 @@ class AudioCaptureWorker(QThread):
             self.status_changed.emit(f"Listening on: {device_name}")
             logger.info(f"Starting audio capture on '{device_name}' (ID: {self.device_id})")
 
-            self._stream = sd.InputStream(
-                device=self.device_id,
-                channels=config.channels,
-                samplerate=config.sample_rate,
-                blocksize=block_size,
-                dtype="float32",
-                callback=self._audio_callback,
-            )
+            try:
+                self._stream = sd.InputStream(
+                    device=self.device_id,
+                    channels=config.channels,
+                    samplerate=config.sample_rate,
+                    blocksize=block_size,
+                    dtype="float32",
+                    callback=self._audio_callback,
+                )
+            except Exception as initial_err:
+                if self.device_id is not None:
+                    logger.warning(f"Failed to open '{device_name}' ({initial_err}). Trying system default input device...")
+                    self.device_id = None
+                    device_name = "Default System Input"
+                    self._stream = sd.InputStream(
+                        device=None,
+                        channels=config.channels,
+                        samplerate=config.sample_rate,
+                        blocksize=block_size,
+                        dtype="float32",
+                        callback=self._audio_callback,
+                    )
+                    self.status_changed.emit(f"Listening on: {device_name}")
+                else:
+                    raise initial_err
 
             with self._stream:
                 while self._is_running:
