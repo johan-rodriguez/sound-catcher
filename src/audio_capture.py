@@ -127,9 +127,14 @@ class AudioCaptureWorker(QThread):
         sock.settimeout(1.0)
         try:
             sock.bind(("0.0.0.0", self.UDP_PORT))
-            msg = f"Listening for Network Stream on UDP Port {self.UDP_PORT}"
+            msg = f"Listening for Network Stream on UDP Port {self.UDP_PORT}..."
             logger.info(msg)
+            print(f"\n[Network Receiver] {msg}")
+            print(f"[Network Receiver] Make sure Windows Firewall allows UDP traffic on port {self.UDP_PORT}\n")
             self.status_changed.emit(msg)
+
+            packet_count = 0
+            first_packet_logged = False
 
             while self._is_running:
                 try:
@@ -138,6 +143,16 @@ class AudioCaptureWorker(QThread):
                         continue
                     samples = np.frombuffer(data, dtype=np.float32)
                     if len(samples) > 0:
+                        packet_count += 1
+                        if not first_packet_logged:
+                            first_packet_logged = True
+                            conn_msg = f"Connected! Receiving audio from Mac ({addr[0]}:{addr[1]})"
+                            logger.info(conn_msg)
+                            print(f"[Network Receiver] 📡 {conn_msg}")
+                            self.status_changed.emit(f"Receiving audio from {addr[0]}")
+                        elif packet_count % 100 == 0:
+                            logger.debug(f"Received {packet_count} UDP audio packets from {addr[0]}")
+
                         rms = float(np.sqrt(np.mean(np.square(samples))))
                         normalized_level = min(1.0, rms * 10.0)
                         self.audio_level_changed.emit(normalized_level)
