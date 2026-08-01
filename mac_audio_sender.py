@@ -2,12 +2,13 @@
 mac_audio_sender.py - Stream macOS Audio over LAN to Sound Catcher on Windows.
 
 Run this script on your Mac while on a call. It captures BlackHole 2ch audio
-and streams raw PCM chunks over UDP directly to the Windows machine running Sound Catcher.
+and streams raw PCM chunks over TCP or UDP directly to the Windows machine running Sound Catcher.
 """
 
 import sys
 import time
 import socket
+import struct
 import argparse
 import numpy as np
 import sounddevice as sd
@@ -17,7 +18,6 @@ DEFAULT_PORT = 50005
 SAMPLE_RATE = 16000
 CHANNELS = 1
 CHUNK_SEC = 0.05  # 50 ms audio chunks (800 samples = 3,200 bytes)
-MAX_PACKET_SIZE = 4096  # Max bytes per UDP datagram to comply with OS UDP MTU limits
 
 
 def get_blackhole_device_id() -> int:
@@ -29,43 +29,71 @@ def get_blackhole_device_id() -> int:
     return -1
 
 
-def test_connectivity(win_ip: str, port: int) -> bool:
-    """Performs pre-flight UDP connectivity test to Windows receiver."""
-    print("\n🧪 Running Network Connectivity Test...")
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        ping_payload = f"PING_HANDSHAKE:{socket.gethostname()}".encode("utf-8")
-        # Send 3 handshake pings
-        for _ in range(3):
-            sock.sendto(ping_payload, (win_ip, port))
-            time.sleep(0.1)
-        print(f"  [✓] Successfully sent UDP Handshake Ping to {win_ip}:{port}")
-        print("  💡 Check Windows Sound Catcher app status to confirm if ping was received!\n")
-        return True
-    except Exception as e:
-        print(f"  [❌] Error sending UDP packets to {win_ip}:{port}: {e}\n")
-        return False
-    finally:
-        sock.close()
+def test_connectivity(win_ip: str, port: int, protocol: str = "tcp") -> bool:
+    """Performs pre-flight connectivity test to Windows receiver."""
+    print(f"\n🧪 Running Network Connectivity Test ({protocol.upper()})...")
+    
+    if protocol == "tcp":
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(3.0)
+        try:
+            sock.connect((win_ip, port))
+            ping_payload = f"PING_HANDSHAKE:{socket.gethostname()}".encode("utf-8")
+            header = struct.pack(">I", len(ping_payload))
+            sock.sendall(header + ping_payload)
+            print(f"  [✓] 🟢 Successfully connected over TCP to {win_ip}:{port}!")
+            sock.close()
+            return True
+        except ConnectionRefusedError:
+            print(f"  [❌] Connection Refused by {win_ip}:{port}")
+            print("      -> Make sure Sound Catcher is open on Windows and set to '🌐 Network Stream'!")
+            return False
+        except socket.timeout:
+            print(f"  [❌] Connection Timed Out to {win_ip}:{port}")
+            print("      -> Windows Firewall is likely blocking incoming TCP port 50005, or IP is incorrect.")
+            return False
+        except Exception as e:
+            print(f"  [❌] TCP Test Error: {e}")
+            return False
+        finally:
+            sock.close()
+    else:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            ping_payload = f"PING_HANDSHAKE:{socket.gethostname()}".encode("utf-8")
+            for _ in range(3):
+                sock.sendto(ping_payload, (win_ip, port))
+                time.sleep(0.05)
+            print(f"  [✓] Sent UDP Handshake Ping to {win_ip}:{port}")
+            return True
+        except Exception as e:
+            print(f"  [❌] Error sending UDP packets: {e}")
+            return False
+        finally:
+            sock.close()
 
 
 def main():
     parser = argparse.ArgumentParser(description="Stream macOS BlackHole Audio over LAN to Sound Catcher on Windows.")
     parser.add_argument("--ip", type=str, required=True, help="IP address of the Windows laptop (e.g., 192.168.1.50)")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"UDP Port (Default: {DEFAULT_PORT})")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Port number (Default: {DEFAULT_PORT})")
+    parser.add_argument("--protocol", type=str, choices=["tcp", "udp"], default="tcp", help="Streaming protocol: tcp (default) or udp")
     parser.add_argument("--device", type=int, default=None, help="Audio input device ID (Auto-detects BlackHole if omitted)")
     parser.add_argument("--test", action="store_true", help="Run connection diagnostic test only without streaming audio")
     args = parser.parse_args()
 
     win_ip = args.ip
     port = args.port
+    protocol = args.protocol.lower()
 
     if args.test:
-        test_connectivity(win_ip, port)
+        test_connectivity(win_ip, port, protocol)
         sys.exit(0)
 
     # Run pre-flight test before streaming
-    test_connectivity(win_ip, port)
+    test_ok = test_connectivity(win_ip, port, protocol)
+    if not test_ok and protocol == "tcp":
+        print("\n⚠️ Pre-flight connection test failed! Please verify Windows IP & Firewall settings before streaming.")
 
     device_id = args.device
     if device_id is None:
@@ -88,29 +116,58 @@ def main():
     print(f"🎙️  macOS Remote Audio Streamer for Sound Catcher")
     print(f"==================================================")
     print(f"  - Source Audio Device:  {dev_name} (ID: {device_id})")
-    print(f"  - Destination Windows:  {win_ip}:{port}")
+    print(f"  - Destination Windows:  {win_ip}:{port} ({protocol.upper()})")
     print(f"  - Sample Rate:          {SAMPLE_RATE} Hz")
     print(f"==================================================")
 
-    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     block_size = int(SAMPLE_RATE * CHUNK_SEC)
 
-    def audio_callback(indata, frames, time_info, status):
-        if status:
-            print(f"[Warning] Audio status: {status}", file=sys.stderr)
-        samples = indata[:, 0].copy() if indata.ndim > 1 else indata.copy()
-        
-        # Calculate audio energy meter
-        rms = float(np.sqrt(np.mean(np.square(samples))))
-        bars = int(min(1.0, rms * 10.0) * 20)
-        meter = "█" * bars + "░" * (20 - bars)
-        print(f"\r📡 Streaming Audio... [{meter}]", end="", flush=True)
+    if protocol == "tcp":
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            print(f"Connecting to Windows at {win_ip}:{port} over TCP...")
+            sock.connect((win_ip, port))
+            print("🟢 Connected to Sound Catcher on Windows!")
+        except Exception as e:
+            print(f"\n❌ Error connecting over TCP to {win_ip}:{port}: {e}")
+            print("Make sure Sound Catcher is running on Windows and port 50005 is allowed in Firewall.")
+            sys.exit(1)
 
-        # Send raw float32 PCM bytes via UDP socket in safe packet sizes
-        raw_bytes = samples.tobytes()
-        for i in range(0, len(raw_bytes), MAX_PACKET_SIZE):
-            chunk = raw_bytes[i : i + MAX_PACKET_SIZE]
-            sock.sendto(chunk, (win_ip, port))
+        def audio_callback(indata, frames, time_info, status):
+            if status:
+                print(f"[Warning] Audio status: {status}", file=sys.stderr)
+            samples = indata[:, 0].copy() if indata.ndim > 1 else indata.copy()
+            
+            rms = float(np.sqrt(np.mean(np.square(samples))))
+            bars = int(min(1.0, rms * 10.0) * 20)
+            meter = "█" * bars + "░" * (20 - bars)
+            print(f"\r📡 Streaming Audio (TCP)... [{meter}]", end="", flush=True)
+
+            raw_bytes = samples.tobytes()
+            header = struct.pack(">I", len(raw_bytes))
+            try:
+                sock.sendall(header + raw_bytes)
+            except Exception as err:
+                print(f"\n❌ Socket send error: {err}", file=sys.stderr)
+
+    else:  # UDP mode
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
+        def audio_callback(indata, frames, time_info, status):
+            if status:
+                print(f"[Warning] Audio status: {status}", file=sys.stderr)
+            samples = indata[:, 0].copy() if indata.ndim > 1 else indata.copy()
+            
+            rms = float(np.sqrt(np.mean(np.square(samples))))
+            bars = int(min(1.0, rms * 10.0) * 20)
+            meter = "█" * bars + "░" * (20 - bars)
+            print(f"\r📡 Streaming Audio (UDP)... [{meter}]", end="", flush=True)
+
+            raw_bytes = samples.tobytes()
+            MAX_PACKET = 4096
+            for i in range(0, len(raw_bytes), MAX_PACKET):
+                chunk = raw_bytes[i : i + MAX_PACKET]
+                sock.sendto(chunk, (win_ip, port))
 
     try:
         with sd.InputStream(
@@ -129,7 +186,7 @@ def main():
     except KeyboardInterrupt:
         print("\n\n🛑 Audio streaming stopped cleanly.")
     except Exception as e:
-        print(f"\n❌ Error starting stream: {e}")
+        print(f"\n❌ Error during audio capture: {e}")
     finally:
         sock.close()
 

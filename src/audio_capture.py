@@ -6,6 +6,8 @@ Uses sounddevice and numpy to continuously listen to system output/input audio s
 import logging
 import time
 import socket
+import struct
+import select
 from typing import List, Tuple, Optional
 import numpy as np
 import sounddevice as sd
@@ -129,63 +131,122 @@ class AudioCaptureWorker(QThread):
         # Emit audio chunk for transcriber module
         self.audio_chunk_ready.emit(samples)
 
+    def _recv_exact(self, conn: socket.socket, num_bytes: int) -> Optional[bytes]:
+        """Helper to receive exact number of bytes over TCP connection."""
+        buf = bytearray()
+        while len(buf) < num_bytes and self._is_running:
+            try:
+                chunk = conn.recv(num_bytes - len(buf))
+                if not chunk:
+                    return None
+                buf.extend(chunk)
+            except socket.timeout:
+                continue
+            except Exception:
+                return None
+        return bytes(buf) if len(buf) == num_bytes else None
+
     def _run_network_stream(self) -> None:
-        """UDP Socket listener for remote audio streaming (e.g. from macOS sender)."""
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(1.0)
+        """Dual TCP/UDP Socket listener for remote audio streaming (e.g. from macOS sender)."""
+        tcp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        tcp_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        
+        udp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
         try:
-            sock.bind(("0.0.0.0", self.UDP_PORT))
-            msg = f"Listening for Network Stream on UDP Port {self.UDP_PORT}..."
+            tcp_sock.bind(("0.0.0.0", self.UDP_PORT))
+            tcp_sock.listen(5)
+            tcp_sock.settimeout(0.5)
+
+            try:
+                udp_sock.bind(("0.0.0.0", self.UDP_PORT))
+                udp_sock.settimeout(0.5)
+            except Exception as e:
+                logger.warning(f"Could not bind UDP socket on {self.UDP_PORT} (TCP active): {e}")
+
+            msg = f"Listening for Network Stream on Port {self.UDP_PORT} (TCP & UDP)..."
             logger.info(msg)
             print(f"\n[Network Receiver] {msg}")
-            print(f"[Network Receiver] Make sure Windows Firewall allows UDP traffic on port {self.UDP_PORT}\n")
+            print(f"[Network Receiver] Make sure Windows Firewall permits incoming TCP/UDP on port {self.UDP_PORT}\n")
             self.status_changed.emit(msg)
 
-            packet_count = 0
-            first_packet_logged = False
-
             while self._is_running:
+                # 1. Check for incoming TCP Connection
                 try:
-                    data, addr = sock.recvfrom(65536)
-                    if not data or not self._is_running:
-                        continue
+                    conn, addr = tcp_sock.accept()
+                    conn.settimeout(1.0)
+                    conn_msg = f"🟢 Connected to Mac via TCP ({addr[0]}:{addr[1]})!"
+                    logger.info(conn_msg)
+                    print(f"\n[Network Receiver] {conn_msg}\n")
+                    self.status_changed.emit(f"Connected to Mac @ {addr[0]}")
 
-                    # Handle connection diagnostic test ping
-                    if data.startswith(b"PING_HANDSHAKE"):
-                        sender_name = data.decode("utf-8", errors="ignore").split(":", 1)[-1]
-                        ping_msg = f"🧪 Ping received from Mac ({sender_name} @ {addr[0]})! Network connected!"
-                        logger.info(ping_msg)
-                        print(f"\n[Network Receiver] {ping_msg}\n")
-                        self.status_changed.emit(f"Ping OK from {addr[0]}")
-                        continue
+                    # Read TCP audio stream
+                    packet_count = 0
+                    while self._is_running:
+                        header = self._recv_exact(conn, 4)
+                        if not header:
+                            print(f"[Network Receiver] Mac disconnected TCP stream.")
+                            self.status_changed.emit("Mac disconnected TCP stream.")
+                            break
+                        
+                        length = struct.unpack(">I", header)[0]
+                        if length > 65536 or length <= 0:
+                            logger.warning(f"Invalid TCP frame length: {length}")
+                            break
 
-                    samples = np.frombuffer(data, dtype=np.float32)
-                    if len(samples) > 0:
-                        packet_count += 1
-                        if not first_packet_logged:
-                            first_packet_logged = True
-                            conn_msg = f"Connected! Receiving audio from Mac ({addr[0]}:{addr[1]})"
-                            logger.info(conn_msg)
-                            print(f"[Network Receiver] 📡 {conn_msg}")
-                            self.status_changed.emit(f"Receiving audio from {addr[0]}")
-                        elif packet_count % 100 == 0:
-                            logger.debug(f"Received {packet_count} UDP audio packets from {addr[0]}")
+                        payload = self._recv_exact(conn, length)
+                        if not payload:
+                            break
 
-                        rms = float(np.sqrt(np.mean(np.square(samples))))
-                        normalized_level = min(1.0, rms * 10.0)
-                        self.audio_level_changed.emit(normalized_level)
-                        self.audio_chunk_ready.emit(samples)
+                        if payload.startswith(b"PING_HANDSHAKE"):
+                            sender_name = payload.decode("utf-8", errors="ignore").split(":", 1)[-1]
+                            print(f"[Network Receiver] 🧪 TCP Ping received from Mac ({sender_name} @ {addr[0]})!")
+                            self.status_changed.emit(f"TCP Ping OK from {addr[0]}")
+                            continue
+
+                        samples = np.frombuffer(payload, dtype=np.float32)
+                        if len(samples) > 0:
+                            packet_count += 1
+                            rms = float(np.sqrt(np.mean(np.square(samples))))
+                            normalized_level = min(1.0, rms * 10.0)
+                            self.audio_level_changed.emit(normalized_level)
+                            self.audio_chunk_ready.emit(samples)
+
+                    conn.close()
+
                 except socket.timeout:
-                    continue
+                    pass
+
+                # 2. Check for incoming UDP packet (Fallback)
+                try:
+                    data, addr = udp_sock.recvfrom(65536)
+                    if data and self._is_running:
+                        if data.startswith(b"PING_HANDSHAKE"):
+                            sender_name = data.decode("utf-8", errors="ignore").split(":", 1)[-1]
+                            ping_msg = f"🧪 UDP Ping received from Mac ({sender_name} @ {addr[0]})!"
+                            logger.info(ping_msg)
+                            print(f"\n[Network Receiver] {ping_msg}\n")
+                            self.status_changed.emit(f"UDP Ping OK from {addr[0]}")
+                            continue
+
+                        samples = np.frombuffer(data, dtype=np.float32)
+                        if len(samples) > 0:
+                            rms = float(np.sqrt(np.mean(np.square(samples))))
+                            normalized_level = min(1.0, rms * 10.0)
+                            self.audio_level_changed.emit(normalized_level)
+                            self.audio_chunk_ready.emit(samples)
+                except socket.timeout:
+                    pass
                 except Exception as e:
-                    logger.error(f"UDP Audio Recv Error: {e}")
+                    logger.debug(f"UDP Recv: {e}")
 
         except Exception as e:
-            error_msg = f"Error binding UDP port {self.UDP_PORT}: {e}"
+            error_msg = f"Error binding network stream port {self.UDP_PORT}: {e}"
             logger.error(error_msg)
             self.error_occurred.emit(error_msg)
         finally:
-            sock.close()
+            tcp_sock.close()
+            udp_sock.close()
 
     def run(self) -> None:
         """Main thread execution method."""
