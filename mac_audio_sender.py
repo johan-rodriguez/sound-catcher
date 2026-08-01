@@ -17,7 +17,7 @@ import sounddevice as sd
 DEFAULT_PORT = 50005
 SAMPLE_RATE = 16000
 CHANNELS = 1
-CHUNK_SEC = 0.05  # 50 ms audio chunks (800 samples = 3,200 bytes)
+CHUNK_SEC = 0.25  # 250 ms audio chunks (4,000 samples = 16,000 bytes per chunk)
 
 
 def get_blackhole_device_id() -> int:
@@ -74,6 +74,9 @@ def test_connectivity(win_ip: str, port: int, protocol: str = "tcp") -> bool:
 
 
 def main():
+    import queue
+    import threading
+
     parser = argparse.ArgumentParser(description="Stream macOS BlackHole Audio over LAN to Sound Catcher on Windows.")
     parser.add_argument("--ip", type=str, required=True, help="IP address of the Windows laptop (e.g., 192.168.1.50)")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"Port number (Default: {DEFAULT_PORT})")
@@ -116,63 +119,80 @@ def main():
     print(f"==================================================")
 
     block_size = int(SAMPLE_RATE * CHUNK_SEC)
+    audio_queue = queue.Queue(maxsize=100)
+    is_streaming = True
 
-    if protocol == "tcp":
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(5.0)
+    # 1. Non-blocking low-latency Audio Callback
+    def audio_callback(indata, frames, time_info, status):
+        if status:
+            pass  # Suppress non-critical warnings
+        samples = indata[:, 0].copy() if indata.ndim > 1 else indata.copy()
         try:
-            print(f"Connecting to Windows at {win_ip}:{port} over TCP...")
-            sock.connect((win_ip, port))
-            print("🟢 Connected to Sound Catcher on Windows!")
-        except Exception as e:
-            print(f"\n❌ Error connecting over TCP to {win_ip}:{port}: {e}")
-            print("Make sure Sound Catcher is running on Windows and port 50005 is allowed in Firewall.")
-            sys.exit(1)
+            audio_queue.put_nowait(samples)
+        except queue.Full:
+            pass  # Drop oldest frame if network is choked to maintain real-time sync
 
-        def audio_callback(indata, frames, time_info, status):
-            nonlocal sock
-            if status:
-                print(f"[Warning] Audio status: {status}", file=sys.stderr)
-            samples = indata[:, 0].copy() if indata.ndim > 1 else indata.copy()
-            
-            rms = float(np.sqrt(np.mean(np.square(samples))))
-            bars = int(min(1.0, rms * 10.0) * 20)
-            meter = "█" * bars + "░" * (20 - bars)
-            print(f"\r📡 Streaming Audio (TCP)... [{meter}]", end="", flush=True)
-
-            raw_bytes = samples.tobytes()
-            header = struct.pack(">I", len(raw_bytes))
+    # 2. Dedicated Network Streamer Thread
+    def network_sender_worker():
+        sock = None
+        if protocol == "tcp":
             try:
-                sock.sendall(header + raw_bytes)
-            except Exception:
-                # Automatic TCP reconnect if stream disconnected
-                try:
-                    sock.close()
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                    sock.settimeout(3.0)
-                    sock.connect((win_ip, port))
-                    sock.sendall(header + raw_bytes)
-                except Exception:
-                    pass
+                print(f"Connecting to Windows at {win_ip}:{port} over TCP...")
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5.0)
+                sock.connect((win_ip, port))
+                print("🟢 Connected! Streaming live audio to Sound Catcher...")
+            except Exception as e:
+                print(f"\n❌ Error connecting over TCP to {win_ip}:{port}: {e}")
+                print("Make sure Sound Catcher is running on Windows and port 50005 is allowed in Firewall.")
+                return
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
-    else:  # UDP mode
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        while is_streaming:
+            try:
+                samples = audio_queue.get(timeout=0.5)
+                if samples is None:
+                    break
 
-        def audio_callback(indata, frames, time_info, status):
-            if status:
-                print(f"[Warning] Audio status: {status}", file=sys.stderr)
-            samples = indata[:, 0].copy() if indata.ndim > 1 else indata.copy()
-            
-            rms = float(np.sqrt(np.mean(np.square(samples))))
-            bars = int(min(1.0, rms * 10.0) * 20)
-            meter = "█" * bars + "░" * (20 - bars)
-            print(f"\r📡 Streaming Audio (UDP)... [{meter}]", end="", flush=True)
+                rms = float(np.sqrt(np.mean(np.square(samples))))
+                bars = int(min(1.0, rms * 10.0) * 20)
+                meter = "█" * bars + "░" * (20 - bars)
+                print(f"\r📡 Streaming Audio ({protocol.upper()})... [{meter}]", end="", flush=True)
 
-            raw_bytes = samples.tobytes()
-            MAX_PACKET = 4096
-            for i in range(0, len(raw_bytes), MAX_PACKET):
-                chunk = raw_bytes[i : i + MAX_PACKET]
-                sock.sendto(chunk, (win_ip, port))
+                raw_bytes = samples.tobytes()
+
+                if protocol == "tcp":
+                    header = struct.pack(">I", len(raw_bytes))
+                    try:
+                        sock.sendall(header + raw_bytes)
+                    except Exception:
+                        # Reconnect logic
+                        try:
+                            sock.close()
+                            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                            sock.settimeout(3.0)
+                            sock.connect((win_ip, port))
+                            sock.sendall(header + raw_bytes)
+                        except Exception:
+                            pass
+                else:
+                    MAX_PACKET = 4096
+                    for i in range(0, len(raw_bytes), MAX_PACKET):
+                        chunk = raw_bytes[i : i + MAX_PACKET]
+                        sock.sendto(chunk, (win_ip, port))
+
+            except queue.Empty:
+                continue
+            except Exception as e:
+                print(f"\nNetwork thread error: {e}", file=sys.stderr)
+
+        if sock:
+            sock.close()
+
+    # Start network sender thread
+    net_thread = threading.Thread(target=network_sender_worker, daemon=True)
+    net_thread.start()
 
     try:
         with sd.InputStream(
