@@ -69,6 +69,12 @@ class TranscriberWorker(QThread):
         # 1. Load `faster-whisper` model
         try:
             self.status_changed.emit(f"Loading transcription model ({config.stt_model_size})...")
+            import ssl
+            import os
+            try:
+                ssl._create_default_https_context = ssl._create_unverified_context
+            except Exception:
+                pass
             from faster_whisper import WhisperModel
 
             logger.info(f"Loading WhisperModel: size={config.stt_model_size}, device={config.stt_device}")
