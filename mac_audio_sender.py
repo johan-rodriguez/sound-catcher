@@ -90,11 +90,6 @@ def main():
         test_connectivity(win_ip, port, protocol)
         sys.exit(0)
 
-    # Run pre-flight test before streaming
-    test_ok = test_connectivity(win_ip, port, protocol)
-    if not test_ok and protocol == "tcp":
-        print("\n⚠️ Pre-flight connection test failed! Please verify Windows IP & Firewall settings before streaming.")
-
     device_id = args.device
     if device_id is None:
         device_id = get_blackhole_device_id()
@@ -124,6 +119,7 @@ def main():
 
     if protocol == "tcp":
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5.0)
         try:
             print(f"Connecting to Windows at {win_ip}:{port} over TCP...")
             sock.connect((win_ip, port))
@@ -134,6 +130,7 @@ def main():
             sys.exit(1)
 
         def audio_callback(indata, frames, time_info, status):
+            nonlocal sock
             if status:
                 print(f"[Warning] Audio status: {status}", file=sys.stderr)
             samples = indata[:, 0].copy() if indata.ndim > 1 else indata.copy()
@@ -147,8 +144,16 @@ def main():
             header = struct.pack(">I", len(raw_bytes))
             try:
                 sock.sendall(header + raw_bytes)
-            except Exception as err:
-                print(f"\n❌ Socket send error: {err}", file=sys.stderr)
+            except Exception:
+                # Automatic TCP reconnect if stream disconnected
+                try:
+                    sock.close()
+                    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    sock.settimeout(3.0)
+                    sock.connect((win_ip, port))
+                    sock.sendall(header + raw_bytes)
+                except Exception:
+                    pass
 
     else:  # UDP mode
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
