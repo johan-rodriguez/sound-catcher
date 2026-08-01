@@ -16,7 +16,8 @@ import sounddevice as sd
 DEFAULT_PORT = 50005
 SAMPLE_RATE = 16000
 CHANNELS = 1
-CHUNK_SEC = 0.5
+CHUNK_SEC = 0.05  # 50 ms audio chunks (800 samples = 3,200 bytes)
+MAX_PACKET_SIZE = 4096  # Max bytes per UDP datagram to comply with OS UDP MTU limits
 
 
 def get_blackhole_device_id() -> int:
@@ -77,8 +78,11 @@ def main():
         meter = "█" * bars + "░" * (20 - bars)
         print(f"\r📡 Streaming Audio... [{meter}]", end="", flush=True)
 
-        # Send raw float32 PCM bytes via UDP socket
-        sock.sendto(samples.tobytes(), (win_ip, port))
+        # Send raw float32 PCM bytes via UDP socket in safe packet sizes
+        raw_bytes = samples.tobytes()
+        for i in range(0, len(raw_bytes), MAX_PACKET_SIZE):
+            chunk = raw_bytes[i : i + MAX_PACKET_SIZE]
+            sock.sendto(chunk, (win_ip, port))
 
     try:
         with sd.InputStream(
