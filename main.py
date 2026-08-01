@@ -58,11 +58,7 @@ def main():
     transcriber_worker = TranscriberWorker()
     ai_worker = AIAssistantWorker()
 
-    # 4. Populate audio devices list in GUI
-    available_devices = AudioCaptureWorker.get_available_input_devices()
-    window.update_audio_devices(available_devices)
-
-    # 5. Connect Qt Signals & Slots
+    # 4. Connect Qt Signals & Slots
 
     # --- Audio Capture -> Transcriber & GUI ---
     audio_worker.audio_chunk_ready.connect(transcriber_worker.add_audio_chunk)
@@ -83,6 +79,10 @@ def main():
 
     # --- User Interaction GUI -> Workers ---
     window.device_selected.connect(audio_worker.set_device)
+
+    # 5. Populate audio devices list in GUI
+    available_devices = AudioCaptureWorker.get_available_input_devices()
+    window.update_audio_devices(available_devices)
 
     # 6. Start Worker Threads
     transcriber_worker.start()

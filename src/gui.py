@@ -310,13 +310,17 @@ class MainWindow(QMainWindow):
     @Slot(list)
     def update_audio_devices(self, devices: List[Tuple[int, str]]) -> None:
         """Populates the Audio Device ComboBox."""
+        from src.audio_capture import AudioCaptureWorker
+
         self.device_combo.blockSignals(True)
         self.device_combo.clear()
 
+        default_dev_id = AudioCaptureWorker.find_default_device_id()
         selected_idx = 0
+
         for i, (dev_id, dev_name) in enumerate(devices):
             self.device_combo.addItem(dev_name, dev_id)
-            if config.default_device_keyword.lower() in dev_name.lower():
+            if dev_id == default_dev_id:
                 selected_idx = i
 
         if devices:

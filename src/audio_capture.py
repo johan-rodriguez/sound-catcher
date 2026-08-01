@@ -254,14 +254,14 @@ class AudioCaptureWorker(QThread):
         """Main thread execution method."""
         self._is_running = True
 
+        # If device_id not specified, search for virtual audio device (BlackHole, VB-Cable, etc.)
+        if self.device_id is None:
+            self.device_id = self.find_default_device_id()
+
         # Handle Network Audio Stream mode
         if self.device_id == self.NETWORK_DEVICE_ID:
             self._run_network_stream()
             return
-
-        # If device_id not specified, search for virtual audio device (BlackHole, VB-Cable, etc.)
-        if self.device_id is None:
-            self.device_id = self.find_default_device_id()
 
         device_name = "Default"
         if self.device_id is not None:
