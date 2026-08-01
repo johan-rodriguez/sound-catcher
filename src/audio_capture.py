@@ -141,6 +141,16 @@ class AudioCaptureWorker(QThread):
                     data, addr = sock.recvfrom(65536)
                     if not data or not self._is_running:
                         continue
+
+                    # Handle connection diagnostic test ping
+                    if data.startswith(b"PING_HANDSHAKE"):
+                        sender_name = data.decode("utf-8", errors="ignore").split(":", 1)[-1]
+                        ping_msg = f"🧪 Ping received from Mac ({sender_name} @ {addr[0]})! Network connected!"
+                        logger.info(ping_msg)
+                        print(f"\n[Network Receiver] {ping_msg}\n")
+                        self.status_changed.emit(f"Ping OK from {addr[0]}")
+                        continue
+
                     samples = np.frombuffer(data, dtype=np.float32)
                     if len(samples) > 0:
                         packet_count += 1

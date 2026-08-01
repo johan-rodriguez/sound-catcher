@@ -29,15 +29,43 @@ def get_blackhole_device_id() -> int:
     return -1
 
 
+def test_connectivity(win_ip: str, port: int) -> bool:
+    """Performs pre-flight UDP connectivity test to Windows receiver."""
+    print("\n🧪 Running Network Connectivity Test...")
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        ping_payload = f"PING_HANDSHAKE:{socket.gethostname()}".encode("utf-8")
+        # Send 3 handshake pings
+        for _ in range(3):
+            sock.sendto(ping_payload, (win_ip, port))
+            time.sleep(0.1)
+        print(f"  [✓] Successfully sent UDP Handshake Ping to {win_ip}:{port}")
+        print("  💡 Check Windows Sound Catcher app status to confirm if ping was received!\n")
+        return True
+    except Exception as e:
+        print(f"  [❌] Error sending UDP packets to {win_ip}:{port}: {e}\n")
+        return False
+    finally:
+        sock.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Stream macOS BlackHole Audio over LAN to Sound Catcher on Windows.")
     parser.add_argument("--ip", type=str, required=True, help="IP address of the Windows laptop (e.g., 192.168.1.50)")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT, help=f"UDP Port (Default: {DEFAULT_PORT})")
     parser.add_argument("--device", type=int, default=None, help="Audio input device ID (Auto-detects BlackHole if omitted)")
+    parser.add_argument("--test", action="store_true", help="Run connection diagnostic test only without streaming audio")
     args = parser.parse_args()
 
     win_ip = args.ip
     port = args.port
+
+    if args.test:
+        test_connectivity(win_ip, port)
+        sys.exit(0)
+
+    # Run pre-flight test before streaming
+    test_connectivity(win_ip, port)
 
     device_id = args.device
     if device_id is None:

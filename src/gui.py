@@ -200,6 +200,12 @@ class MainWindow(QMainWindow):
         self.device_combo.currentIndexChanged.connect(self._on_device_changed)
         control_layout.addWidget(self.device_combo)
 
+        # Network Info / Diagnostics Button
+        self.net_info_btn = QPushButton("📡 IP Info")
+        self.net_info_btn.setToolTip("Show Windows IP address & Mac connection test helper")
+        self.net_info_btn.clicked.connect(self._show_network_diagnostics)
+        control_layout.addWidget(self.net_info_btn)
+
         # RMS Audio Level Meter
         self.audio_meter = QProgressBar()
         self.audio_meter.setRange(0, 100)
@@ -461,3 +467,38 @@ class MainWindow(QMainWindow):
                 result = result.replace("**", "<b>", 1)
 
         return result if result else md_text
+
+    @Slot()
+    def _show_network_diagnostics(self) -> None:
+        """Displays network connection diagnostics and local IP addresses."""
+        import socket
+        ips = []
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            ips.append(s.getsockname()[0])
+            s.close()
+        except Exception:
+            pass
+
+        try:
+            hostname = socket.gethostname()
+            for ip in socket.gethostbynameex(hostname)[2]:
+                if ip not in ips and not ip.startswith("127."):
+                    ips.append(ip)
+        except Exception:
+            pass
+
+        ip_list_str = "<br>".join([f"&nbsp;&nbsp;• <b>{ip}</b>" for ip in ips]) if ips else "&nbsp;&nbsp;• 127.0.0.1"
+        primary_ip = ips[0] if ips else "192.168.x.x"
+
+        msg = (
+            f"<b>💻 Windows Laptop IP Address(es):</b><br>"
+            f"{ip_list_str}<br><br>"
+            f"<b>1. Run this command on your Mac to test connection:</b><br>"
+            f"<code>python3 mac_audio_sender.py --ip {primary_ip} --test</code><br><br>"
+            f"<b>2. Run this command on your Mac to stream call audio:</b><br>"
+            f"<code>python3 mac_audio_sender.py --ip {primary_ip}</code><br><br>"
+            f"<i>Listening on UDP Port 50005. Make sure Windows Firewall permits incoming UDP packets.</i>"
+        )
+        QMessageBox.information(self, "📡 Network Stream Helper & Diagnostics", msg)
