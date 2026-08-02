@@ -45,8 +45,9 @@
 ### Remote Cross-Platform Setup (Mac Call -> Windows App)
 
 If you hold your calls on your **macOS laptop** but want to run **Sound Catcher** on a **Windows laptop**:
-1. Run `python3 mac_audio_sender.py --ip <WINDOWS_IP>` on your Mac.
-2. Select **`🌐 Network Stream (UDP Port 50005)`** in Sound Catcher on Windows.
+1. Run `setup_windows_firewall.bat` as Administrator on Windows to allow Port 50005.
+2. Run `python main.py` on Windows (auto-listens on `🌐 Network Stream (Port 50005)`).
+3. Run `python3 mac_audio_sender.py --ip <WINDOWS_IP>` on your Mac.
 
 👉 **See the complete step-by-step tutorial in [REMOTE_STREAMING_GUIDE.md](file:///Users/johan/Development/sound-catcher/REMOTE_STREAMING_GUIDE.md)**
 
@@ -104,12 +105,13 @@ python3 main.py
 ```
 
 ### Application Features:
-1. In the **Audio** dropdown, select **BlackHole 2ch** (auto-selected if detected).
+1. In the **Audio** dropdown, select **BlackHole 2ch** on Mac, or **`🌐 Network Stream`** on Windows.
 2. Speak or play call audio:
    - The top panel **🗣️ Live Transcription** displays real-time speech-to-text.
    - The bottom panel **✨ Gemini Suggestions** automatically generates bullet-pointed response notes when a question is detected.
 3. Click **📋 Copy Last Response** to instantly copy answers to your clipboard.
-4. The window floats on top of all applications for easy reading. Toggle **Always on Top** via the checkbox anytime.
+4. Click **📡 IP Info** to view your local Windows IP address and connection instructions.
+5. The window floats on top of all applications for easy reading. Toggle **Always on Top** via the checkbox anytime.
 
 ---
 
@@ -117,18 +119,22 @@ python3 main.py
 
 ```
 sound-catcher/
-├── spec.md                # Technical specification
-├── requirements.txt       # Python dependencies
-├── config.py              # Global configuration & .env reader
-├── main.py                # App entrypoint and Qt orchestrator
-├── README.md              # Installation & setup guide
-├── .env                   # Environment file for GEMINI_API_KEY
-├── .env.example           # Environment template
+├── spec.md                     # Technical specification
+├── requirements.txt            # Python dependencies
+├── config.py                   # Global configuration & .env reader
+├── main.py                     # App entrypoint and Qt orchestrator
+├── mac_audio_sender.py         # macOS LAN audio streamer script
+├── setup_windows_firewall.bat  # 1-Click Windows Firewall setup script
+├── setup_windows_firewall.ps1  # PowerShell Firewall script
+├── REMOTE_STREAMING_GUIDE.md   # Step-by-step cross-platform tutorial
+├── README.md                   # Installation & setup guide
+├── .env                        # Environment file for GEMINI_API_KEY
+├── .env.example                # Environment template
 └── src/
-    ├── audio_capture.py   # Real-time audio stream worker (sounddevice + QThread)
-    ├── transcriber.py     # Local Speech-To-Text worker (faster-whisper + VAD)
-    ├── ai_assistant.py    # Google Gemini API integration (google-genai SDK)
-    └── gui.py             # Modern PySide6 dark mode floating GUI
+    ├── audio_capture.py        # Real-time audio & dual TCP/UDP worker
+    ├── transcriber.py          # Local Speech-To-Text worker (faster-whisper + VAD)
+    ├── ai_assistant.py         # Google Gemini API integration (google-genai SDK)
+    └── gui.py                  # Modern PySide6 dark mode floating GUI
 ```
 
 ---

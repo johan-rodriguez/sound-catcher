@@ -7,13 +7,13 @@ This guide explains step-by-step how to **hold your voice call on your Mac** whi
 ## 🏗️ Architecture & Flow
 
 ```
-+---------------------------------------------------+        LAN / Wi-Fi (UDP Port 50005)        +---------------------------------------------------+
++---------------------------------------------------+         LAN / Wi-Fi (TCP Port 50005)        +---------------------------------------------------+
 |                     MAC LAPTOP                    | -----------------------------------------> |                   WINDOWS LAPTOP                  |
 |  (Call: Zoom / Meet / Teams / Slack / Discord)    |                                            |              (Running Sound Catcher)               |
 |                                                   |                                            |                                                   |
-| 1. System Call Audio                              |                                            | 1. Receives UDP Audio Packets                     |
+| 1. System Call Audio                              |                                            | 1. Accepts TCP Socket Stream                      |
 | 2. Redirected to BlackHole 2ch                    |                                            | 2. Local Whisper STT Transcription (CPU/CUDA)     |
-| 3. mac_audio_sender.py streams PCM over UDP       |                                            | 3. Google Gemini API Answers in Floating GUI      |
+| 3. mac_audio_sender.py streams PCM over TCP       |                                            | 3. Google Gemini API Answers in Floating GUI      |
 +---------------------------------------------------+                                            +---------------------------------------------------+
 ```
 
@@ -29,19 +29,31 @@ This guide explains step-by-step how to **hold your voice call on your Mac** whi
 
 ## 🚀 Step-by-Step Setup Tutorial
 
-### Step 1: Find the Windows Laptop IP Address
+### Step 1: Configure Windows Firewall (1-Click)
 
 On your **Windows Laptop**:
-1. Open Command Prompt (`cmd`) or PowerShell.
-2. Type:
-   ```cmd
-   ipconfig
-   ```
-3. Look for **IPv4 Address** under your Wi-Fi or Ethernet adapter (e.g., `192.168.1.85` or `10.0.0.15`).
+
+1. Right-click **`setup_windows_firewall.bat`** in the project directory and select **Run as Administrator** (or run `setup_windows_firewall.ps1` in PowerShell as Admin).
+2. This automatically configures Windows Defender Firewall rules for **Port 50005 TCP & UDP**.
 
 ---
 
-### Step 2: Configure macOS Audio Routing (Mac Laptop)
+### Step 2: Start Sound Catcher on Windows
+
+On your **Windows Laptop**:
+
+1. Open Command Prompt / PowerShell in the project directory:
+   ```cmd
+   venv\Scripts\activate
+   python main.py
+   ```
+2. Sound Catcher automatically selects **`🌐 Network Stream (Port 50005)`** and starts listening on launch!
+   - *Status bar will display: "Listening for Network Stream on Port 50005 (TCP & UDP)..."*
+   - Click the **`📡 IP Info`** button next to the Audio dropdown to view your Windows IPv4 address (e.g. `192.168.100.108`).
+
+---
+
+### Step 3: Configure macOS Audio Routing (Mac Laptop)
 
 1. **Install BlackHole 2ch** (if not already installed):
    ```bash
@@ -52,23 +64,7 @@ On your **Windows Laptop**:
    - Click the **`+`** icon at the bottom-left -> **Create Multi-Output Device**.
    - Check the box for your **Headphones/Speakers** AND **BlackHole 2ch**.
    - Set **System Sound Output** to **Multi-Output Device** in System Settings -> Sound.
-
----
-
-### Step 3: Start Sound Catcher on Windows
-
-On your **Windows Laptop**:
-
-1. Open Command Prompt / PowerShell in the project directory:
-   ```cmd
-   venv\Scripts\activate
-   python main.py
-   ```
-2. In the Sound Catcher floating window, click the **Audio** dropdown menu at the top.
-3. Select **`🌐 Network Stream (UDP Port 50005)`**.
-   - *Status bar will display: "Listening for Network Stream on UDP Port 50005"*
-
-> 💡 **Note on Windows Firewall:** If Windows Firewall prompts you when running `python main.py`, check **Private Networks** and click **Allow Access** to allow incoming UDP packets on port 50005.
+   - *(Optional)* You can double-click **Multi-Output Device** in Audio MIDI Setup to rename it to any preferred display name.
 
 ---
 
@@ -77,24 +73,29 @@ On your **Windows Laptop**:
 On your **macOS Laptop**:
 
 1. Open Terminal in the project directory.
-2. Run the `mac_audio_sender.py` script, pointing to your Windows laptop's IP address:
+2. **(Optional) Run a diagnostic connection test:**
    ```bash
-   python3 mac_audio_sender.py --ip 192.168.1.85
+   ./venv/bin/python3 mac_audio_sender.py --ip 192.168.100.108 --test
    ```
-   *(Replace `192.168.1.85` with your actual Windows IPv4 address found in Step 1)*.
+3. **Start live streaming:**
+   ```bash
+   ./venv/bin/python3 mac_audio_sender.py --ip 192.168.100.108
+   ```
+   *(Replace `192.168.100.108` with your actual Windows IPv4 address found in Step 2)*.
 
-3. You will see live audio streaming status in Terminal:
+4. You will see live audio streaming status in Terminal:
    ```text
    ==================================================
    🎙️  macOS Remote Audio Streamer for Sound Catcher
    ==================================================
      - Source Audio Device:  BlackHole 2ch (ID: 2)
-     - Destination Windows:  192.168.1.85:50005
+     - Destination Windows:  192.168.100.108:50005 (TCP)
      - Sample Rate:          16000 Hz
    ==================================================
 
-   🚀 Streaming started! Speak or play call audio on your Mac...
-   📡 Streaming Audio... [████████████░░░░░░░░]
+   Connecting to Windows at 192.168.100.108:50005 over TCP...
+   🟢 Connected to Sound Catcher on Windows!
+   📡 Streaming Audio (TCP)... [████████████░░░░░░░░]
    ```
 
 ---
@@ -105,7 +106,7 @@ On your **macOS Laptop**:
 2. Notice the live audio signal progress bar moving on both:
    - Mac terminal screen (`mac_audio_sender.py`)
    - Windows Sound Catcher GUI top progress bar.
-3. Sound Catcher on Windows will transcribe the speech and display Gemini AI bullet-point responses in real time!
+3. Sound Catcher on Windows will transcribe speech and display Gemini AI bullet-point responses in real time!
 
 ---
 
@@ -113,7 +114,7 @@ On your **macOS Laptop**:
 
 If you don't want to stream audio over Wi-Fi:
 
-1. Plug a **3.5mm Aux Audio Cable** from Mac Headphone Jack -> Windows **Mic / Line-In** Port (or a $5 USB Audio Capture Dongle on Windows).
+1. Plug a **3.5mm Aux Audio Cable** from Mac Headphone Jack -> Windows **Mic / Line-In** Port (or a USB Audio Capture Dongle on Windows).
 2. On Mac: Set sound output to Headphones.
 3. On Windows: Open Sound Catcher and select **Microphone / Line In / USB Audio** from the Audio dropdown.
 
@@ -121,10 +122,13 @@ If you don't want to stream audio over Wi-Fi:
 
 ## ❓ Troubleshooting
 
-### 1. Audio meter on Windows is not moving
-- Verify both laptops are on the same Wi-Fi network (or router).
-- Test connectivity from Mac terminal: `ping <WINDOWS_IP>`.
-- Ensure Windows Firewall isn't blocking UDP port 50005. You can temporarily test by disabling Windows Defender Firewall for Private Networks or adding an inbound rule for UDP port 50005.
+### 1. `[Errno 60] Operation timed out` on Mac
+- **Cause:** Windows Defender Firewall is blocking incoming TCP connections on Port 50005.
+- **Solution:** Right-click `setup_windows_firewall.bat` on Windows -> **Run as Administrator**.
 
-### 2. Can't hear the call on Mac
-- Ensure **Multi-Output Device** is selected as your System Output on Mac, and that **both** your headphones and BlackHole 2ch are checked in Audio MIDI Setup.
+### 2. `[Errno 61] Connection refused` on Mac
+- **Cause:** Firewall is open, but Sound Catcher is not open on Windows or not listening.
+- **Solution:** Make sure `python main.py` is running on Windows and the top dropdown is set to `🌐 Network Stream (Port 50005)`.
+
+### 3. Can't hear call audio on Mac
+- Ensure **Multi-Output Device** is selected as your System Output on Mac, and that **both** your headphones/speakers and BlackHole 2ch are checked in Audio MIDI Setup.
